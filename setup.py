@@ -25,4 +25,13 @@ setup(
     install_requires=install_requires,
     use_scm_version=True,
     setup_requires=['setuptools_scm'],
+    classifiers=[
+        'Development Status :: 3 - Alpha',
+        'Intended Audience :: Developers',
+        'License :: OSI Approved :: BSD License',
+        "Programming Language :: Python",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.5",
+    ],
+    keywords='rethink rethinkdb asyncio',
 )
