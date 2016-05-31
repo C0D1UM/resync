@@ -13,7 +13,7 @@ with open(path.join(here, 'requirements.txt'), encoding='utf-8') as f:
     install_requires = f.read().splitlines()
 
 setup(
-    name='resync',
+    name='resync-orm',
     license='BSD 3-clause',
     description='An ORM-like wrapper for the rethinkdb asyncio driver',
     long_description=long_description,
