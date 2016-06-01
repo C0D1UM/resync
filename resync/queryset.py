@@ -79,6 +79,14 @@ class Queryset(BaseQueryset):
             result.append(item)
         return result
 
+    def all(self):
+        """
+        Just return a new copy of this queryset.  Currently makes duck-typing model Manager and Queryset easier.
+        Might be useful one day to re-evaluate a cached queryset once I implement queryset caching.
+        :return: A new Queryset with the same query
+        """
+        return self.__class__(self.model, self.queries)
+
     def transform_query_result(self, result):
         return self.model.from_db(result)
 
