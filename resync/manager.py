@@ -72,7 +72,7 @@ class Manager(BaseManager):
 
         if result['errors']:
             msg = self.INSERT_ERROR_MSG.format(
-                n_errors=result['errors'], error_msg=result['first_error'], query=self.queries)
+                n_errors=result['errors'], error_msg=result['first_error'], query=queries)
             l.debug(msg)
             raise self.DBInsertError(msg)
 
