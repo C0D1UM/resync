@@ -1,10 +1,10 @@
 import logging
 import operator
-from typing import List, Any, Tuple, Mapping, Callable, Iterable
+from typing import List, Any, Tuple, Mapping, Callable
 
 import rethinkdb as r
 
-from resync.connection import DatabaseQuery, connection_pool, RethinkConnection
+from resync.connection import DatabaseQuery, QueryRunner
 from resync.diff import get_diff_from_changeset, Diff, delete
 
 l = logging.getLogger('resync.queryset')
@@ -17,52 +17,28 @@ class BaseQueryset:
     def __init__(self, model, queries=None):
         self.model = model
         self.queries = queries or tuple()  # type: Tuple[DatabaseQuery]
-        self._conn = None
+        self._query = None
 
     async def __aiter__(self):
-        self._conn = await connection_pool.get_conn()
-        self.cursor = await self._run_query(self._conn)
+        self._query = QueryRunner(self.model.table, self.queries)
+        self.cursor = await self._query.run()
         return self
 
     async def __anext__(self):
         if await self.cursor.fetch_next():
             value = await self.cursor.next()
         else:
-            await connection_pool.put_conn(self._conn)
-            self._conn = None
+            self._query.close()
             raise StopAsyncIteration
         return self.transform_query_result(value)
 
     def transform_query_result(self, value):
         return value
 
-    async def _run_query(self, conn):
-        """
-            Run a query against the database and return a cursor or query result as appropriate.
-            Returns:
-                Result dictionary or cursor, depending on the type of the final query.
-            """
-        query_to_run = self._build_query(self.model.table, self.queries)
-        result = await query_to_run.run(conn)
-        return result
-
-    @staticmethod
-    def _build_query(table: str, queries: Iterable[DatabaseQuery]):
-        """
-        Build a query object from a list of DatabaseQuery tuples.  Might be useful in the future for building
-        nested queries.
-        """
-        final_query = r.table(table)
-        for query_type, args, kwargs in queries:
-            query_func = getattr(final_query, query_type)
-            final_query = query_func(*args, **kwargs)
-        return final_query
-
 
 class Queryset(BaseQueryset):
 
     UPDATE_ERROR_MSG = '{n_errors} errors in update query. \n First error message: {error_msg}\n Query: {query}'
-    INSERT_ERROR_MSG = '{n_errors} errors in insert query. \n First error message: {error_msg}\n Query: {query}'
 
     def __await__(self):
         """
@@ -121,8 +97,8 @@ class Queryset(BaseQueryset):
         if kwargs:
             self.filter(**kwargs)
         value = None
-        async with RethinkConnection() as conn:
-            cursor = await self._run_query(conn)
+        async with QueryRunner(self.model.table, self.queries) as query:
+            cursor = await query.run()
             if not await cursor.fetch_next():
                 raise self.model.DoesNotExist()
             value = await cursor.next()
@@ -147,8 +123,8 @@ class Queryset(BaseQueryset):
         serialized_data = self.model.serialize_fields(fields_to_update)
         query_kwargs = {'return_changes': True}
         self.queries += (('update', (serialized_data,), query_kwargs),)
-        async with RethinkConnection() as conn:
-            result = await self._run_query(conn)
+        async with QueryRunner(self.model.table, self.queries) as query:
+            result = await query.run()
         if result['errors']:
             msg = self.UPDATE_ERROR_MSG.format(
                 n_errors=result['errors'], error_msg=result['first_error'], query=self.queries)
@@ -162,29 +138,6 @@ class Queryset(BaseQueryset):
             instance = self.model.from_db(changeset['new_val'])
             changes.append((instance, diff))
         return changes
-
-    async def insert(self, **field_data):
-        """
-        Inserts a new record into the database
-        :param field_data: Attributes to set on the model
-        :return: Created instance
-        """
-        assert not self.queries, 'It doesn\'t make sense to `insert` into a filtered queryset.'
-        unsaved_instance = self.model(**field_data)
-        serialized_data = unsaved_instance.to_db()
-        query_kwargs = {'return_changes': True}
-        self.queries += (('insert', (serialized_data,), query_kwargs),)
-        async with RethinkConnection() as conn:
-            result = await self._run_query(conn)
-
-        if result['errors']:
-            msg = self.INSERT_ERROR_MSG.format(
-                n_errors=result['errors'], error_msg=result['first_error'], query=self.queries)
-            l.debug(msg)
-            raise DBInsertError(msg)
-
-        new_object_data = result['changes'][0]['new_val']
-        return self.model.from_db(new_object_data)
 
     def changes(self):
         """
@@ -209,8 +162,7 @@ class OrderedQueryset(Queryset):
         try:
             value = self.cursor[self._index]
         except IndexError:
-            await connection_pool.put_conn(self._conn)
-            self._conn = None
+            self._query.close()
             raise StopAsyncIteration
         self._index += 1
         return self.transform_query_result(value)
@@ -246,8 +198,4 @@ class TooManyResults(Exception):
 
 
 class DBUpdateError(Exception):
-    pass
-
-
-class DBInsertError(Exception):
     pass

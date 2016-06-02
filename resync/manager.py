@@ -1,15 +1,23 @@
+from logging import getLogger
 from typing import Tuple
 
 import rethinkdb as r
 
-from resync.connection import connection_pool
+from resync.connection import connection_pool, QueryRunner
 from resync.queryset import Queryset
+
+l = getLogger('resync.manager')
 
 
 class BaseManager:
 
+    INSERT_ERROR_MSG = '{n_errors} errors in insert query. \n First error message: {error_msg}\n Query: {query}'
+
     def attach_model(self, model):
         self.model = model
+
+    class DBInsertError(Exception):
+        pass
 
 
 class Manager(BaseManager):
@@ -49,13 +57,27 @@ class Manager(BaseManager):
         """
         return self.all().changes()
 
-    def create(self, **kwargs):
+    async def create(self, **field_data):
         """
         Inserts a new record into the database
-        :param kwargs: Attributes to set on the model
-        :return: Coroutine that returns created instance
+        :param field_data: Attributes to set on the model
+        :return: Created instance
         """
-        return self.all().insert(**kwargs)
+        unsaved_instance = self.model(**field_data)
+        serialized_data = unsaved_instance.to_db()
+        query_kwargs = {'return_changes': True}
+        queries = (('insert', (serialized_data,), query_kwargs),)
+        async with QueryRunner(self.model.table, queries) as query:
+            result = await query.run()
+
+        if result['errors']:
+            msg = self.INSERT_ERROR_MSG.format(
+                n_errors=result['errors'], error_msg=result['first_error'], query=self.queries)
+            l.debug(msg)
+            raise self.DBInsertError(msg)
+
+        new_object_data = result['changes'][0]['new_val']
+        return self.model.from_db(new_object_data)
 
     # TODO: Fix or remove this.
     # def create_sync(self, conn, **kwargs):
