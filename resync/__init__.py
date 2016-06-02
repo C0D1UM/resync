@@ -1,6 +1,8 @@
 import logging
 from typing import Mapping
 
+import asyncio
+
 from resync import models
 from resync.connection import connection_pool
 
@@ -24,6 +26,15 @@ class ResyncConfiguration:
 
     def __init__(self, config: Mapping[str, str]):
         self.config = config
+
+    def __enter__(self):
+        setup(self.config)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        loop = asyncio.get_event_loop()
+        fut = asyncio.ensure_future(teardown())
+        if not loop.is_running():
+            loop.run_until_complete(fut)
 
     async def __aenter__(self):
         setup(self.config)
