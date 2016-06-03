@@ -14,10 +14,17 @@ ALLOWED_COMPARATORS = frozenset(['eq', 'ne', 'gt', 'lt', 'ge', 'le'])
 
 class BaseQueryset:
 
-    def __init__(self, model, queries=None):
+    def __init__(self, model, queries=tuple()):
         self.model = model
-        self.queries = queries or tuple()  # type: Tuple[DatabaseQuery]
+        self._queries = queries
         self._query = None
+
+    @property
+    def queries(self) -> Tuple[DatabaseQuery]:
+        """
+        We really don't want anybody to mutate this.
+        """
+        return self._queries
 
     async def __aiter__(self):
         self._query = QueryRunner(self.model.table, self.queries)
@@ -180,7 +187,7 @@ def _build_filter_query(field: str, comparator: str, value: Any) -> Callable[[An
     """
     if comparator not in ALLOWED_COMPARATORS:
         raise KeyError('Comparator "{}" is not recognized'.format(comparator))
-    compare = getattr(operator, comparator)  # type: Callable[..., bool]
+    compare = getattr(operator, comparator)  # type: Callable[[Any, Any], bool]
     return lambda row: compare(row[field], value)
 
 
