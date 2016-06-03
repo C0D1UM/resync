@@ -117,3 +117,7 @@ def main():
 
 - Tests
 - Docs
+
+### Contributors
+
+- James Keys (author) <@skolsuper>
