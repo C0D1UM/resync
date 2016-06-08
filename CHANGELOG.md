@@ -1,3 +1,7 @@
+### 0.2.2 - 8 June 2016
+
+- Fix broken Queryset.update function.
+
 ### 0.2.1 - 8 June 2016
 
 - Fix memory leak caused by forgetting to await close coroutine.
