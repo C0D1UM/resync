@@ -35,7 +35,7 @@ class BaseQueryset:
         if await self.cursor.fetch_next():
             value = await self.cursor.next()
         else:
-            self._query.close()
+            await self._query.close()
             raise StopAsyncIteration
         return self.transform_query_result(value)
 
@@ -169,7 +169,7 @@ class OrderedQueryset(Queryset):
         try:
             value = self.cursor[self._index]
         except IndexError:
-            self._query.close()
+            await self._query.close()
             raise StopAsyncIteration
         self._index += 1
         return self.transform_query_result(value)
