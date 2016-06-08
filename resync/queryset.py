@@ -129,8 +129,8 @@ class Queryset(BaseQueryset):
         """
         serialized_data = self.model.serialize_fields(fields_to_update)
         query_kwargs = {'return_changes': True}
-        self.queries += (('update', (serialized_data,), query_kwargs),)
-        async with QueryRunner(self.model.table, self.queries) as query:
+        queries = self.queries + (('update', (serialized_data,), query_kwargs),)
+        async with QueryRunner(self.model.table, queries) as query:
             result = await query.run()
         if result['errors']:
             msg = self.UPDATE_ERROR_MSG.format(
@@ -138,9 +138,8 @@ class Queryset(BaseQueryset):
             l.debug(msg)
             raise DBUpdateError(msg)
 
-        raw_changes = result['changes']
         changes = []
-        for changeset in raw_changes:
+        for changeset in result['changes']:
             diff = get_diff_from_changeset(changeset)
             instance = self.model.from_db(changeset['new_val'])
             changes.append((instance, diff))
